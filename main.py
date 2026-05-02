@@ -25,6 +25,9 @@ ACCESS_TOKEN    = os.getenv("ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN    = os.getenv("VERIFY_TOKEN", "12345")
 GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 
 # ── Gemini ────────────────────────────────────────────────────────────────────
 if GEMINI_API_KEY:
@@ -35,13 +38,33 @@ else:
     gemini_model = None
 
 # ── Firebase ──────────────────────────────────────────────────────────────────
+def _parse_firebase_credentials(cred_value: str) -> dict:
+    """Parse Firebase service-account JSON from env string, tolerating multiline private keys."""
+    raw = (cred_value or "").strip()
+    if not raw:
+        raise ValueError("FIREBASE_CREDENTIALS is empty")
+
+    # dotenv users often wrap JSON in single quotes
+    if (raw.startswith("'") and raw.endswith("'")) or (raw.startswith('"') and raw.endswith('"')):
+        raw = raw[1:-1]
+
+    # First attempt: valid JSON as-is
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # Second attempt: convert literal newlines to escaped \n (common in private_key)
+    normalized = raw.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\\n")
+    return json.loads(normalized)
+
 try:
     if not firebase_admin._apps:
         cred_value = os.getenv("FIREBASE_CREDENTIALS")
         if cred_value:
             if cred_value.strip().startswith("{"):
                 # Parse as JSON string
-                cred_dict = json.loads(cred_value)
+                cred_dict = _parse_firebase_credentials(cred_value)
                 firebase_admin.initialize_app(credentials.Certificate(cred_dict))
             elif os.path.exists(cred_value):
                 # Parse as file path
@@ -56,8 +79,12 @@ except Exception as e:
     db = None
 
 app = FastAPI(title="Hotel Booking WhatsApp Bot")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+else:
+    logger.warning(f"Static directory not found: {STATIC_DIR}")
+
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # ── Seed Data (real hotels per city) ─────────────────────────────────────────
 SEED_HOTELS = [
