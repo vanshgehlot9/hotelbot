@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-from google import genai as google_genai
+import google.generativeai as google_genai
 from dotenv import load_dotenv
 from datetime import datetime
 from receipt_generator import generate_receipt
@@ -28,10 +28,11 @@ GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
 
 # ── Gemini ────────────────────────────────────────────────────────────────────
 if GEMINI_API_KEY:
-    gemini_client = google_genai.Client(api_key=GEMINI_API_KEY)
+    google_genai.configure(api_key=GEMINI_API_KEY)
+    gemini_model = google_genai.GenerativeModel("gemini-1.5-flash")
 else:
     logger.warning("GEMINI_API_KEY not set.")
-    gemini_client = None
+    gemini_model = None
 
 # ── Firebase ──────────────────────────────────────────────────────────────────
 try:
@@ -253,7 +254,7 @@ def keyword_fallback(user_message: str, user_state: dict = None) -> dict:
     return result
 
 def extract_intent(user_message: str, user_state: dict = None) -> dict:
-    if not gemini_client:
+    if not gemini_model:
         return keyword_fallback(user_message, user_state=user_state)
     prompt = f"""
     You are an AI assistant for a hotel booking system.
@@ -272,7 +273,7 @@ def extract_intent(user_message: str, user_state: dict = None) -> dict:
     """
     for attempt in range(2):
         try:
-            resp = gemini_client.models.generate_content(model="gemini-1.5-flash-8b", contents=prompt)
+            resp = gemini_model.generate_content(prompt)
             text = resp.text.strip()
             if text.startswith("```json"):
                 text = text[7:-3].strip()
@@ -673,7 +674,7 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
 
 @app.get("/")
 async def root():
-    return {"status": "HotelBot running", "firestore": db is not None, "gemini": gemini_client is not None}
+    return {"status": "HotelBot running", "firestore": db is not None, "gemini": gemini_model is not None}
 
 if __name__ == "__main__":
     import uvicorn
