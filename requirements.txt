@@ -6,3 +6,13 @@ requests
 python-dotenv
 fpdf2
 jinja2
+redis
+celery
+razorpay
+passlib[bcrypt]
+python-jose[cryptography]
+structlog
+pydantic-settings
+python-multipart
+email-validator
+openpyxl

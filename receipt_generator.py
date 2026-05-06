@@ -109,3 +109,33 @@ def generate_receipt(booking_data: dict, filepath: str):
     # Save PDF
     pdf.output(filepath)
     return filepath
+
+def process_and_send_receipt(phone: str, booking_data: dict):
+    import tempfile
+    import os
+    from app.services.whatsapp import whatsapp_service
+    
+    try:
+        # Create temp file
+        fd, temp_path = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        
+        # Generate PDF
+        generate_receipt(booking_data, temp_path)
+        
+        # Upload to WhatsApp
+        media_id = whatsapp_service.upload_media(temp_path)
+        
+        if media_id:
+            whatsapp_service.send_document_message(
+                phone=phone,
+                media_id=media_id,
+                filename=f"Booking_Receipt_{booking_data.get('booking_id', 'XXX')}.pdf"
+            )
+            
+        # Cleanup
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+    except Exception as e:
+        print(f"Error processing receipt: {e}")
